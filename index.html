@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Silicon Data 核心指标看板</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
+    <style>
+        body { font-family: -apple-system, sans-serif; background-color: #09090b; color: #fff; margin: 0; padding: 40px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .download-btn { background-color: #67def9; color: #09090b; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; }
+        .download-btn:hover { background-color: #a5ecfc; }
+        #chart { width: 100%; height: 600px; background-color: #18181b; border: 1px solid #27272a; border-radius: 12px; padding: 20px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>GPU & LLM Token 连续追踪看板</h1>
+        <a href="data.xlsx" class="download-btn" download>📥 下载 Excel 数据</a>
+    </div>
+    <div id="chart"></div>
+
+    <script>
+        // 获取本地的 CSV 文件
+        fetch('data.csv')
+            .then(response => response.text())
+            .then(csv => {
+                const lines = csv.trim().split('\n');
+                const headers = lines[0].split(',');
+                const dates = [];
+                const seriesData = {};
+
+                // 初始化 series 数据结构
+                for (let i = 1; i < headers.length; i++) {
+                    seriesData[headers[i]] = [];
+                }
+
+                // 解析 CSV 数据
+                for (let i = 1; i < lines.length; i++) {
+                    const values = lines[i].split(',');
+                    dates.push(values[0]);
+                    for (let j = 1; j < values.length; j++) {
+                        seriesData[headers[j]].push(parseFloat(values[j]) || null);
+                    }
+                }
+
+                // 组装 ECharts Series
+                const series = headers.slice(1).map(header => ({
+                    name: header,
+                    type: 'line',
+                    smooth: true,
+                    symbol: 'none',
+                    data: seriesData[header]
+                }));
+
+                // 渲染图表
+                const chart = echarts.init(document.getElementById('chart'), 'dark');
+                chart.setOption({
+                    backgroundColor: 'transparent',
+                    tooltip: { trigger: 'axis' },
+                    legend: { data: headers.slice(1), top: 0, textStyle: { color: '#a1a1aa' } },
+                    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+                    xAxis: { type: 'category', boundaryGap: false, data: dates, axisLine: { lineStyle: { color: '#3f3f46' } } },
+                    yAxis: { type: 'value', splitLine: { lineStyle: { color: '#27272a' } } },
+                    series: series
+                });
+            });
+    </script>
+</body>
+</html>
