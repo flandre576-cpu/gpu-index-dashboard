@@ -1,6 +1,5 @@
 import requests
 import re
-import json
 import pandas as pd
 from datetime import datetime
 import os
@@ -13,39 +12,45 @@ def fetch_silicon_data():
     
     response = requests.get(url, headers=headers)
     response.raise_for_status()
-    html = response.text
+    
+    # 关键修复：清洗 RSC 格式中被转义的反斜杠引号，还原为标准 JSON 字符串
+    clean_html = response.text.replace('\\"', '"')
 
-    # 使用正则匹配所有指标的 title 和 points 数组
-    pattern = r'"title":"([^"]+)".*?"points":(\[\{.*?\}\])'
-    matches = re.findall(pattern, html)
+    # 优化后的正则：直接提取指标名称和最新的 rawValue
+    pattern = r'"title":"([^"]+)".*?"rawValue":"([^"]+)"'
+    matches = re.findall(pattern, clean_html)
 
-    # 获取当前日期作为索引
     today_date = datetime.now().strftime('%Y-%m-%d')
     today_data = {'Date': today_date}
 
-    for title, points_str in matches:
-        try:
-            points = json.loads(points_str)
-            if points:
-                # 获取数组中最新一天的价格
-                latest_price = points[-1]['price']
-                # 清洗一下 title，去掉括号内的 ticker 以保持列名整洁
-                clean_title = title.split('(')[0].strip()
-                today_data[clean_title] = latest_price
-        except json.JSONDecodeError:
-            continue
+    for title, price in matches:
+        # 清洗指标名称，去掉括号部分 (例如: H100(SDH100RT) -> H100)
+        clean_title = title.split('(')[0].strip()
+        
+        # 防止重复读取，仅保留第一次匹配到的干净数据
+        if clean_title not in today_data:
+            try:
+                today_data[clean_title] = float(price)
+            except ValueError:
+                continue
 
     return pd.DataFrame([today_data])
 
 def update_datasets():
     df_new = fetch_silicon_data()
+    
+    # 如果没有抓取到除了 Date 以外的任何数据，则直接退出，防止写入空数据
+    if len(df_new.columns) <= 1:
+        print("未抓取到有效价格数据，请检查网页结构。")
+        return
+
     csv_file = 'data.csv'
     excel_file = 'data.xlsx'
 
     # 如果存在历史数据，则读取并追加
     if os.path.exists(csv_file):
         df_existing = pd.read_csv(csv_file)
-        # 合并新数据，并按日期去重（如果当天已运行过，则覆盖更新）
+        # 合并新数据，并按日期去重（如果当天已运行过，则覆盖更新为最新值）
         df_combined = pd.concat([df_existing, df_new]).drop_duplicates(subset=['Date'], keep='last')
     else:
         df_combined = df_new
@@ -57,7 +62,7 @@ def update_datasets():
     # 保存为 CSV (供看板渲染) 和 Excel (供直接下载)
     df_combined.to_csv(csv_file, index=False)
     df_combined.to_excel(excel_file, index=False)
-    print(f"Data updated successfully for {df_new['Date'].iloc[0]}")
+    print(f"数据更新成功，日期: {df_new['Date'].iloc[0]}，共记录 {len(df_new.columns)-1} 个指标。")
 
 if __name__ == "__main__":
     update_datasets()
