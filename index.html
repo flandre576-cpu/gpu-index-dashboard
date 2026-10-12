@@ -2,66 +2,139 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>Silicon Data 核心指标看板</title>
+    <title>Silicon Data 自动化看板</title>
     <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
     <style>
-        body { font-family: -apple-system, sans-serif; background-color: #09090b; color: #fff; margin: 0; padding: 40px; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
-        .download-btn { background-color: #67def9; color: #09090b; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #09090b; color: #fff; margin: 0; padding: 40px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
+        .title h1 { margin: 0; font-size: 28px; font-weight: 600; }
+        .title p { margin: 8px 0 0 0; color: #a1a1aa; font-size: 14px; }
+        .download-btn { background-color: #67def9; color: #09090b; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; transition: background-color 0.2s; }
         .download-btn:hover { background-color: #a5ecfc; }
-        #chart { width: 100%; height: 600px; background-color: #18181b; border: 1px solid #27272a; border-radius: 12px; padding: 20px; }
+        
+        /* 网格化布局 */
+        #charts-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 24px; }
+        
+        /* 独立图表卡片样式 */
+        .chart-card { background-color: #121214; border: 1px solid #27272a; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; transition: border-color 0.3s; }
+        .chart-card:hover { border-color: #3f3f46; }
+        .chart-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 10px; }
+        .chart-title { font-size: 16px; font-weight: 600; color: #fff; }
+        .chart-latest-value { font-size: 24px; font-weight: 700; color: #67def9; font-family: monospace; }
+        .chart-body { flex: 1; height: 220px; width: 100%; }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>GPU & LLM Token 连续追踪看板</h1>
+        <div class="title">
+            <h1>Silicon Data 核心指标看板</h1>
+            <p>每日 GPU、内存与 LLM Token 价格追踪</p>
+        </div>
         <a href="data.xlsx" class="download-btn" download>📥 下载 Excel 数据</a>
     </div>
-    <div id="chart"></div>
+    <div id="charts-container"></div>
 
     <script>
         // 获取本地的 CSV 文件
         fetch('data.csv')
             .then(response => response.text())
             .then(csv => {
-                const lines = csv.trim().split('\n');
+                // 解析 CSV
+                const lines = csv.trim().split('\n').filter(line => line.trim() !== '');
                 const headers = lines[0].split(',');
                 const dates = [];
                 const seriesData = {};
 
-                // 初始化 series 数据结构
+                // 初始化每个指标的数据数组
                 for (let i = 1; i < headers.length; i++) {
                     seriesData[headers[i]] = [];
                 }
 
-                // 解析 CSV 数据
+                // 填充数据
                 for (let i = 1; i < lines.length; i++) {
                     const values = lines[i].split(',');
                     dates.push(values[0]);
                     for (let j = 1; j < values.length; j++) {
-                        seriesData[headers[j]].push(parseFloat(values[j]) || null);
+                        const val = parseFloat(values[j]);
+                        seriesData[headers[j]].push(isNaN(val) ? null : val);
                     }
                 }
 
-                // 组装 ECharts Series
-                const series = headers.slice(1).map(header => ({
-                    name: header,
-                    type: 'line',
-                    smooth: true,
-                    symbol: 'none',
-                    data: seriesData[header]
-                }));
+                const container = document.getElementById('charts-container');
 
-                // 渲染图表
-                const chart = echarts.init(document.getElementById('chart'), 'dark');
-                chart.setOption({
-                    backgroundColor: 'transparent',
-                    tooltip: { trigger: 'axis' },
-                    legend: { data: headers.slice(1), top: 0, textStyle: { color: '#a1a1aa' } },
-                    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-                    xAxis: { type: 'category', boundaryGap: false, data: dates, axisLine: { lineStyle: { color: '#3f3f46' } } },
-                    yAxis: { type: 'value', splitLine: { lineStyle: { color: '#27272a' } } },
-                    series: series
+                // 为每个指标动态生成一个卡片图表
+                headers.slice(1).forEach(header => {
+                    // 创建 DOM 元素
+                    const card = document.createElement('div');
+                    card.className = 'chart-card';
+                    
+                    // 获取最新一天有效价格显示在右上角
+                    const dataArray = seriesData[header];
+                    let latestValue = '--';
+                    for(let i = dataArray.length - 1; i >= 0; i--) {
+                        if(dataArray[i] !== null) {
+                            latestValue = dataArray[i];
+                            break;
+                        }
+                    }
+
+                    // 设置卡片内部 HTML
+                    card.innerHTML = `
+                        <div class="chart-header">
+                            <div class="chart-title">${header}</div>
+                            <div class="chart-latest-value">$${latestValue}</div>
+                        </div>
+                        <div class="chart-body"></div>
+                    `;
+                    container.appendChild(card);
+
+                    // 初始化 ECharts
+                    const chartDom = card.querySelector('.chart-body');
+                    const chart = echarts.init(chartDom, 'dark');
+
+                    chart.setOption({
+                        backgroundColor: 'transparent',
+                        tooltip: { 
+                            trigger: 'axis',
+                            formatter: function(params) {
+                                return `${params[0].axisValue}<br/>${params[0].marker} <b>$${params[0].value}</b>`;
+                            }
+                        },
+                        grid: { left: '2%', right: '2%', top: '5%', bottom: '5%', containLabel: true },
+                        xAxis: { 
+                            type: 'category', 
+                            data: dates, 
+                            boundaryGap: false,
+                            axisLine: { lineStyle: { color: '#3f3f46' } },
+                            axisLabel: { color: '#71717a', fontSize: 10, margin: 12 },
+                            splitLine: { show: false }
+                        },
+                        yAxis: { 
+                            type: 'value', 
+                            scale: true, // 核心改动：自适应 Y 轴，突出涨跌细节
+                            splitLine: { lineStyle: { color: '#27272a', type: 'dashed' } },
+                            axisLabel: { color: '#71717a', fontSize: 10 }
+                        },
+                        series: [{
+                            data: seriesData[header],
+                            type: 'line',
+                            smooth: true,
+                            symbol: 'circle',
+                            symbolSize: 4,
+                            showSymbol: false,
+                            lineStyle: { width: 2, color: '#67def9' },
+                            itemStyle: { color: '#67def9' },
+                            areaStyle: {
+                                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                    { offset: 0, color: 'rgba(103, 222, 249, 0.2)' },
+                                    { offset: 1, color: 'rgba(103, 222, 249, 0)' }
+                                ])
+                            }
+                        }]
+                    });
+                    
+                    // 适配屏幕缩放
+                    window.addEventListener('resize', () => chart.resize());
                 });
             });
     </script>
