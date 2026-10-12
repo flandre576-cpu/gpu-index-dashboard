@@ -17,7 +17,8 @@ def fetch_silicon_data():
     clean_html = response.text.replace('\\"', '"')
 
     # 优化后的正则：直接提取指标名称和最新的 rawValue
-    pattern = r'"title":"([^"]+)".*?"rawValue":"([^"]+)"'
+    # 增加 "group" 字段的限定，确保只抓取指标卡片
+    pattern = r'"group":"[^"]+","title":"([^"]+)".*?"rawValue":"([^"]+)"'
     matches = re.findall(pattern, clean_html)
 
     today_date = datetime.now().strftime('%Y-%m-%d')
