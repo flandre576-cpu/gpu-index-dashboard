@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>Silicon Data 自动化看板</title>
+    <title>Silicon Data 核心指标看板</title>
     <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #09090b; color: #fff; margin: 0; padding: 40px; }
@@ -21,7 +21,9 @@
         .chart-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 10px; }
         .chart-title { font-size: 16px; font-weight: 600; color: #fff; }
         .chart-latest-value { font-size: 24px; font-weight: 700; color: #67def9; font-family: monospace; }
-        .chart-body { flex: 1; height: 220px; width: 100%; }
+        
+        /* 强制指定图表高度，防止在 Flexbox 布局中被压缩消失 */
+        .chart-body { height: 200px; min-height: 200px; width: 100%; }
     </style>
 </head>
 <body>
@@ -35,22 +37,18 @@
     <div id="charts-container"></div>
 
     <script>
-        // 获取本地的 CSV 文件
         fetch('data.csv')
             .then(response => response.text())
             .then(csv => {
-                // 解析 CSV
                 const lines = csv.trim().split('\n').filter(line => line.trim() !== '');
                 const headers = lines[0].split(',');
                 const dates = [];
                 const seriesData = {};
 
-                // 初始化每个指标的数据数组
                 for (let i = 1; i < headers.length; i++) {
                     seriesData[headers[i]] = [];
                 }
 
-                // 填充数据
                 for (let i = 1; i < lines.length; i++) {
                     const values = lines[i].split(',');
                     dates.push(values[0]);
@@ -62,79 +60,79 @@
 
                 const container = document.getElementById('charts-container');
 
-                // 为每个指标动态生成一个卡片图表
-                headers.slice(1).forEach(header => {
-                    // 创建 DOM 元素
-                    const card = document.createElement('div');
-                    card.className = 'chart-card';
-                    
-                    // 获取最新一天有效价格显示在右上角
+                headers.slice(1).forEach((header, index) => {
                     const dataArray = seriesData[header];
                     let latestValue = '--';
                     for(let i = dataArray.length - 1; i >= 0; i--) {
-                        if(dataArray[i] !== null) {
+                        if(dataArray[i] !== null && dataArray[i] !== undefined) {
                             latestValue = dataArray[i];
                             break;
                         }
                     }
 
-                    // 设置卡片内部 HTML
+                    const card = document.createElement('div');
+                    card.className = 'chart-card';
+                    const chartId = 'chart-container-' + index;
+                    
                     card.innerHTML = `
                         <div class="chart-header">
                             <div class="chart-title">${header}</div>
                             <div class="chart-latest-value">$${latestValue}</div>
                         </div>
-                        <div class="chart-body"></div>
+                        <div id="${chartId}" class="chart-body"></div>
                     `;
                     container.appendChild(card);
 
-                    // 初始化 ECharts
-                    const chartDom = card.querySelector('.chart-body');
-                    const chart = echarts.init(chartDom, 'dark');
-
-                    chart.setOption({
-                        backgroundColor: 'transparent',
-                        tooltip: { 
-                            trigger: 'axis',
-                            formatter: function(params) {
-                                return `${params[0].axisValue}<br/>${params[0].marker} <b>$${params[0].value}</b>`;
-                            }
-                        },
-                        grid: { left: '2%', right: '2%', top: '5%', bottom: '5%', containLabel: true },
-                        xAxis: { 
-                            type: 'category', 
-                            data: dates, 
-                            boundaryGap: false,
-                            axisLine: { lineStyle: { color: '#3f3f46' } },
-                            axisLabel: { color: '#71717a', fontSize: 10, margin: 12 },
-                            splitLine: { show: false }
-                        },
-                        yAxis: { 
-                            type: 'value', 
-                            scale: true, // 核心改动：自适应 Y 轴，突出涨跌细节
-                            splitLine: { lineStyle: { color: '#27272a', type: 'dashed' } },
-                            axisLabel: { color: '#71717a', fontSize: 10 }
-                        },
-                        series: [{
-                            data: seriesData[header],
-                            type: 'line',
-                            smooth: true,
-                            symbol: 'circle',
-                            symbolSize: 4,
-                            showSymbol: false,
-                            lineStyle: { width: 2, color: '#67def9' },
-                            itemStyle: { color: '#67def9' },
-                            areaStyle: {
-                                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                                    { offset: 0, color: 'rgba(103, 222, 249, 0.2)' },
-                                    { offset: 1, color: 'rgba(103, 222, 249, 0)' }
-                                ])
-                            }
-                        }]
-                    });
-                    
-                    // 适配屏幕缩放
-                    window.addEventListener('resize', () => chart.resize());
+                    // 延迟渲染：确保 DOM 已经完全分配了高度后再初始化图表
+                    setTimeout(() => {
+                        const chartDom = document.getElementById(chartId);
+                        if (!chartDom) return;
+                        
+                        const chart = echarts.init(chartDom);
+                        chart.setOption({
+                            tooltip: { 
+                                trigger: 'axis',
+                                formatter: function(params) {
+                                    let val = params[0].value !== null ? '$' + params[0].value : '无数据';
+                                    return `${params[0].axisValue}<br/>${params[0].marker} <b>${val}</b>`;
+                                }
+                            },
+                            grid: { left: '2%', right: '2%', top: '5%', bottom: '5%', containLabel: true },
+                            xAxis: { 
+                                type: 'category', 
+                                data: dates, 
+                                boundaryGap: false,
+                                axisLine: { lineStyle: { color: '#3f3f46' } },
+                                axisLabel: { color: '#71717a', fontSize: 10, margin: 12 },
+                                splitLine: { show: false }
+                            },
+                            yAxis: { 
+                                type: 'value', 
+                                scale: true, 
+                                splitLine: { lineStyle: { color: '#27272a', type: 'dashed' } },
+                                axisLabel: { color: '#71717a', fontSize: 10 }
+                            },
+                            series: [{
+                                data: seriesData[header],
+                                type: 'line',
+                                smooth: true,
+                                connectNulls: true, // 核心修复：允许跳过空值连接成线
+                                symbol: 'circle',
+                                symbolSize: 5,
+                                showSymbol: true,   // 核心修复：显示数据点，避免数据太少时看不见
+                                lineStyle: { width: 2, color: '#67def9' },
+                                itemStyle: { color: '#67def9' },
+                                areaStyle: {
+                                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                        { offset: 0, color: 'rgba(103, 222, 249, 0.2)' },
+                                        { offset: 1, color: 'rgba(103, 222, 249, 0)' }
+                                    ])
+                                }
+                            }]
+                        });
+                        
+                        window.addEventListener('resize', () => chart.resize());
+                    }, 50);
                 });
             });
     </script>
